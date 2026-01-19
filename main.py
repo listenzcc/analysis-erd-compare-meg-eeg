@@ -18,6 +18,8 @@ Functions:
 
 # %% ---- 2026-01-18 ------------------------
 # Requirements and constants
+import json
+from collections import defaultdict
 from itertools import combinations
 from scipy import stats
 import numpy as np
@@ -113,6 +115,7 @@ idx = (
 
 table = table.loc[idx].reset_index(drop=True)
 print(table)
+table.to_csv(OUTPUT_DIR / 'erd example channels summary.csv', index=False)
 
 # %%
 table = table[['times', 'values', 'mode', 'evt', 'band']]
@@ -192,19 +195,69 @@ results_df = pd.DataFrame(results)
 print(results_df)
 
 # %%
-significant_df = results_df[results_df['p_value'] < 0.01].copy()
+significant_df = results_df[results_df['p_value'] < 0.05].copy()
 significant_df = significant_df.query(f'time>0 & time<4').copy()
 significant_df = significant_df[significant_df['band'].isin(
     ['alpha', 'beta'])].copy()
-significant_df
-
-# %%
-# 方法1：使用seaborn的relplot（推荐，更简洁）
-fig = plt.figure(figsize=(14, 12), dpi=600)
+significant_df = significant_df.query('evt1 != "4" & evt2 != "4"').copy()
+significant_df['t'] = significant_df['t_statistic'].abs()
 
 # 创建组合标签
 significant_df['comparison'] = significant_df['evt1'].astype(
     str) + ' vs ' + significant_df['evt2'].astype(str)
+
+significant_df
+
+# %%
+times = np.array(significant_df['time'].unique())
+times.sort()
+times
+
+# %%
+# Statistical time ranges of significant differences for comparisons
+time_ranges = defaultdict(list)
+for comparison in ['0 vs 1', '0 vs 2', '0 vs 3', '1 vs 2', '1 vs 3', '2 vs 3']:
+    for mode in ['meg', 'eeg']:
+        for band in ['alpha', 'beta']:
+            key = f"{comparison}_{mode}_{band}"
+            comp_df = significant_df[significant_df['comparison']
+                                     == comparison]
+            comp_df = comp_df[comp_df['mode'] == mode]
+            comp_df = comp_df[comp_df['band'] == band]
+            for t in times:
+                t = float(t)
+                _df = comp_df[comp_df['time'] < t+0.1]
+                _df = _df[_df['time'] > t-0.1]
+                if _df['p_value'].min() < 0.05:
+                    time_ranges[key].append(t)
+
+print("Significant time ranges for comparisons (p < 0.05):")
+for comparison, ranges in time_ranges.items():
+    print(f"{comparison}: {ranges}")
+
+# %%
+json.dump(time_ranges, open(
+    OUTPUT_DIR / 'Significant time ranges.json', 'w'), indent=4)
+
+# %%
+time_lines = []
+for k, v in time_ranges.items():
+    time_line = times * 0
+    time_line[np.isin(times, v)] = 1
+    time_lines.append(time_line)
+
+time_lines = np.array(time_lines)
+df = pd.DataFrame(time_lines, index=time_ranges.keys(), columns=times)
+df.to_csv(OUTPUT_DIR / 'Significant time lines.csv')
+
+plt.imshow(time_lines, aspect='auto', cmap='Greys')
+plt.show()
+
+# %%
+
+# %%
+# 方法1：使用seaborn的relplot（推荐，更简洁）
+fig = plt.figure(figsize=(14, 12), dpi=600)
 
 # 使用relplot创建网格图
 g = sns.relplot(
@@ -213,7 +266,7 @@ g = sns.relplot(
     y='comparison',
     col='band',
     row='mode',
-    hue='comparison',
+    hue='t',
     kind='scatter',
     height=4,
     aspect=1.2,
