@@ -107,15 +107,15 @@ table['band'] = table['freqs'].map(
 print(table)
 
 # %%
-idx = (
-    table
-    .groupby(["times", "mode", "evt", "band"])["values"]
-    .idxmin()
-)
+# idx = (
+#     table
+#     .groupby(["times", "mode", "evt", "band"])["values"]
+#     .idxmin()
+# )
 
-table = table.loc[idx].reset_index(drop=True)
-print(table)
-table.to_csv(OUTPUT_DIR / 'erd example channels summary.csv', index=False)
+# table = table.loc[idx].reset_index(drop=True)
+# print(table)
+# table.to_csv(OUTPUT_DIR / 'erd example channels summary.csv', index=False)
 
 # %%
 table = table[['times', 'values', 'mode', 'evt', 'band']]
@@ -148,6 +148,9 @@ for (band, mode), group_df in df.groupby(['band', 'mode']):
             evt_time_data = group_df[(group_df['evt'] == evt) &
                                      (group_df['times'] == time_point)]
             time_data[evt] = evt_time_data['values'].values
+
+        # print(time_data)
+        # ANOVA on time_data
 
         # 对所有evt对进行两两比较
         for evt1, evt2 in combinations(EVENTS, 2):
@@ -226,9 +229,9 @@ for comparison in ['0 vs 1', '0 vs 2', '0 vs 3', '1 vs 2', '1 vs 3', '2 vs 3']:
             comp_df = comp_df[comp_df['band'] == band]
             for t in times:
                 t = float(t)
-                _df = comp_df[comp_df['time'] < t+0.1]
-                _df = _df[_df['time'] > t-0.1]
-                if _df['p_value'].min() < 0.05:
+                _df = comp_df[comp_df['time'] < t+0.2]
+                _df = _df[_df['time'] > t-0.2]
+                if len(_df) > 5:  # _df['p_value'].max() < 0.05:
                     time_ranges[key].append(t)
 
 print("Significant time ranges for comparisons (p < 0.05):")
@@ -239,7 +242,6 @@ for comparison, ranges in time_ranges.items():
 json.dump(time_ranges, open(
     OUTPUT_DIR / 'Significant time ranges.json', 'w'), indent=4)
 
-# %%
 time_lines = []
 for k, v in time_ranges.items():
     time_line = times * 0
@@ -254,6 +256,24 @@ plt.imshow(time_lines, aspect='auto', cmap='Greys')
 plt.show()
 
 # %%
+list(time_ranges.keys())
+time_ranges['1 vs 2_meg_beta']
+
+# %%
+df = significant_df.copy()
+print(df)
+indexs = []
+for i, row in df.iterrows():
+    k = f"{row['comparison']}_{row['mode']}_{row['band']}"
+    v = time_ranges[k]
+    if row['time'] in v:
+        indexs.append(i)
+
+print(f'{k=}, {v=}')
+print(f'{row=}')
+print(len(df))
+df = df.loc[indexs]
+print(len(df))
 
 # %%
 # 方法1：使用seaborn的relplot（推荐，更简洁）
@@ -261,7 +281,7 @@ fig = plt.figure(figsize=(14, 12), dpi=600)
 
 # 使用relplot创建网格图
 g = sns.relplot(
-    data=significant_df,
+    data=df,
     x='time',
     y='comparison',
     col='band',
